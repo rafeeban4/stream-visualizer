@@ -6,7 +6,14 @@
 
 export type Acks = "0" | "1" | "all";
 
-export type MsgPhase = "toBroker" | "committing" | "inLog" | "toConsumer" | "done" | "dropped";
+export type MsgPhase =
+  | "toBroker"
+  | "committing"
+  | "buffered" // acks=all + retries: parked in the producer's retry buffer while the broker is down
+  | "inLog"
+  | "toConsumer"
+  | "done"
+  | "dropped";
 
 export interface Message {
   id: number;
@@ -117,6 +124,11 @@ export class Engine {
     return inLog;
   }
 
+  get buffered(): number {
+    // Records held in the producer retry buffer (acks=all during an outage).
+    return this.messages.filter((m) => m.phase === "buffered").length;
+  }
+
   addProducer() {
     const id = (this.producers.at(-1)?.id ?? 0) + 1;
     this.producers.push({ id, rate: 2.5, accumulator: 0 });
@@ -205,10 +217,18 @@ export class Engine {
   private commit(msg: Message) {
     if (this.brokerDown) {
       // Broker is down. Behaviour depends on acks:
-      //  - acks=0: producer already "moved on"; the message is lost silently.
-      //  - acks=1/all: the produce fails; with no retry the message drops, but
-      //    with idempotence + retries it would survive. We model the honest
-      //    default: dropped, and count it, so the failure is visible.
+      //  - acks=0: fire-and-forget; the producer already moved on -> lost silently.
+      //  - acks=1: waits for the leader, but with no retry configured the produce
+      //    fails and the record is dropped.
+      //  - acks=all: models a *durable* producer (acks=all + retries + idempotence).
+      //    The record isn't acknowledged, so it stays in the retry buffer and is
+      //    re-sent once the broker recovers -> zero loss. That's the whole point
+      //    of the setting, so we show it surviving instead of dropping.
+      if (this.acks === "all") {
+        msg.phase = "buffered";
+        msg.progress = 0;
+        return;
+      }
       msg.phase = "dropped";
       msg.progress = 0;
       this.metrics.dropped++;
@@ -259,6 +279,16 @@ export class Engine {
           if (msg.progress >= 1) this.commit(msg);
           break;
         }
+        case "buffered":
+          // Held in the retry buffer. When the broker comes back, re-attempt the
+          // commit; until then, just animate the "still trying" pulse.
+          if (!this.brokerDown) {
+            msg.phase = "committing";
+            msg.progress = 0;
+          } else {
+            msg.progress += dt;
+          }
+          break;
         case "inLog": {
           // Wait for an owning consumer to pull it. Ordering within a partition
           // is enforced: only the lowest-offset in-log message is eligible.

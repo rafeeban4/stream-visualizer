@@ -162,7 +162,7 @@ const chapters: Chapter[] = [
   },
   {
     title: "5 · acks: the durability dial",
-    body: "<b>acks=0</b>: fire-and-forget, fastest, loses data on failure. <b>acks=1</b>: wait for the leader. <b>acks=all</b>: wait for replicas — safest, slightly slower (wider ring). Now hit <b>kill broker</b> under each setting and compare the <b>dropped</b> counter.",
+    body: "<b>acks=0</b>: fire-and-forget, fastest, loses data on failure. <b>acks=1</b>: wait for the leader — no retry here, so an outage still drops. <b>acks=all</b>: a durable producer (replicas + retries) — records park in a <b>retry buffer</b> (pulsing rings) instead of dropping. Hit <b>kill broker</b> under each setting: watch <b>dropped</b> climb at acks=0/1, but at acks=all only <b>buffered</b> grows — then drains to zero when you restore.",
     apply: () => { engine.reset(4); engine.globalRate = 2.5; engine.acks = "0"; syncAcks(); },
   },
   {
@@ -203,7 +203,13 @@ function buildChapters() {
 
 function gotoChapter(i: number) {
   chapterIdx = (i + chapters.length) % chapters.length;
+  // Silence the event log while a chapter reconfigures the scene, then start it
+  // fresh — otherwise setup fires a burst of near-identical rebalance lines.
+  const saved = engine.onEvent;
+  engine.onEvent = () => {};
   chapters[chapterIdx].apply();
+  engine.onEvent = saved;
+  log.length = 0;
   syncAcks();
   renderChapter();
 }
@@ -232,6 +238,7 @@ function renderHud() {
       ${stat("consumed", m.consumed)}
       ${stat("lag", lag, lagKind)}
       ${stat("dropped", m.dropped, m.dropped > 0 ? "bad" : "")}
+      ${engine.buffered > 0 ? stat("buffered", engine.buffered, "warn") : ""}
       ${stat("acks", "acks=" + engine.acks)}
     </div>
     <div class="evlog">${logHtml}</div>

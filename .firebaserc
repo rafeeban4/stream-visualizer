@@ -5,8 +5,11 @@
   "targets": {
     "portfolio-cd098": {
       "hosting": {
-        "streamscope": ["streamscope-demo"]
+        "streamscope": [
+          "streamscope-demo"
+        ]
       }
     }
-  }
+  },
+  "etags": {}
 }

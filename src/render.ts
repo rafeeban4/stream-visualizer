@@ -109,10 +109,11 @@ export class Renderer {
       const pt = this.producerPt(i, e.producers.length, w, h);
       node(ctx, pt, 22, COL.panel, COL.ok, `P${p.id}`);
     });
+    // Column labels sit at the bottom so they never collide with the HUD overlay.
     ctx.fillStyle = COL.dim;
     ctx.font = "11px ui-monospace, monospace";
     ctx.textAlign = "center";
-    ctx.fillText("PRODUCERS", 70, 60);
+    ctx.fillText("PRODUCERS", 70, h - 12);
 
     // --- Consumers ---------------------------------------------------------
     e.consumers.forEach((c, i) => {
@@ -125,20 +126,26 @@ export class Renderer {
     });
     ctx.fillStyle = COL.dim;
     ctx.font = "11px ui-monospace, monospace";
-    ctx.fillText(e.consumers.length ? "CONSUMER GROUP" : "NO CONSUMERS", w - 70, 60);
+    ctx.fillText(e.consumers.length ? "CONSUMER GROUP" : "NO CONSUMERS", w - 70, h - 12);
 
     // --- Messages ----------------------------------------------------------
-    // Pre-compute per-partition queue slots for inLog messages (ordered).
+    // Pre-compute per-partition slots: inLog messages queue rightward inside the
+    // lane; buffered (retry) messages stack leftward outside the lane entry.
     const queueSlot = new Map<number, number>();
+    const bufferSlot = new Map<number, number>();
     for (let p = 0; p < laneCount; p++) {
-      const inLog = e.messages
+      e.messages
         .filter((m) => m.partition === p && m.phase === "inLog")
-        .sort((a, b) => a.offset - b.offset);
-      inLog.forEach((m, idx) => queueSlot.set(m.id, idx));
+        .sort((a, b) => a.offset - b.offset)
+        .forEach((m, idx) => queueSlot.set(m.id, idx));
+      e.messages
+        .filter((m) => m.partition === p && m.phase === "buffered")
+        .sort((a, b) => a.id - b.id)
+        .forEach((m, idx) => bufferSlot.set(m.id, idx));
     }
 
     for (const m of e.messages) {
-      const pos = this.messagePos(m, w, h, brokerLeft, brokerRight, laneCount, queueSlot);
+      const pos = this.messagePos(m, w, h, brokerLeft, brokerRight, laneCount, queueSlot, bufferSlot);
       this.drawMessage(ctx, m, pos);
     }
   }
@@ -151,6 +158,7 @@ export class Renderer {
     brokerRight: number,
     laneCount: number,
     queueSlot: Map<number, number>,
+    bufferSlot: Map<number, number>,
   ): Pt & { alpha: number; r: number } {
     const e = this.engine;
     const y = this.laneY(m.partition, laneCount, h);
@@ -166,6 +174,12 @@ export class Renderer {
       case "committing": {
         // pulse at the lane entry; acks=all shows a wider replication ring
         return { x: brokerLeft + 14, y, alpha: 1, r: 6 };
+      }
+      case "buffered": {
+        // stacked just outside the lane entry — the producer's retry buffer
+        const slot = bufferSlot.get(m.id) ?? 0;
+        const x = Math.max(brokerLeft - 58, brokerLeft - 10 - slot * 12);
+        return { x, y, alpha: 1, r: 6 };
       }
       case "inLog": {
         const slot = queueSlot.get(m.id) ?? 0;
@@ -202,6 +216,16 @@ export class Renderer {
       ctx.lineWidth = 2;
       ctx.beginPath();
       ctx.arc(pos.x, pos.y, ringR, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+
+    if (m.phase === "buffered") {
+      // "still retrying" pulse — a breathing warn ring around the held record.
+      const pulse = 7 + Math.sin(m.progress * 6) * 3;
+      ctx.strokeStyle = withAlpha(COL.warn, 0.8);
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      ctx.arc(pos.x, pos.y, pulse, 0, Math.PI * 2);
       ctx.stroke();
     }
 

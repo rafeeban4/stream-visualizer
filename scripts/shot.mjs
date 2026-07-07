@@ -1,9 +1,10 @@
 // One-off screenshot helper for the README. Not part of the app.
 import { chromium } from "playwright";
 
+const url = process.env.SHOT_URL || "http://localhost:5185";
 const browser = await chromium.launch();
 const page = await browser.newPage({ viewport: { width: 1120, height: 720 }, deviceScaleFactor: 2 });
-await page.goto("http://localhost:5185", { waitUntil: "networkidle" });
+await page.goto(url, { waitUntil: "networkidle" });
 
 // Advance to chapter 3 (consumer groups & rebalancing) — the richest scene.
 const next = page.locator(".chapter-nav button", { hasText: "Next" });
