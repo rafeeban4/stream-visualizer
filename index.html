@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>StreamScope — an interactive guide to event streaming</title>
+    <meta
+      name="description"
+      content="An interactive, animated explainer for how event-streaming systems like Kafka move messages through partitions, consumer groups, acks, and broker failures."
+    />
+  </head>
+  <body>
+    <header class="masthead">
+      <div class="wrap">
+        <h1>StreamScope</h1>
+        <p class="tagline">
+          An interactive guide to how event-streaming systems (Kafka &amp; friends)
+          actually move data — partitions, consumer groups, acks, and what happens
+          when a broker dies.
+        </p>
+      </div>
+    </header>
+
+    <main class="wrap">
+      <section class="stage-panel">
+        <canvas id="stage"></canvas>
+        <div id="hud" class="hud"></div>
+      </section>
+
+      <section class="controls" id="controls"></section>
+
+      <section class="chapters" id="chapters"></section>
+    </main>
+
+    <footer class="wrap footnote">
+      <p>
+        Built by Rafiul Islam · vanilla TypeScript + Canvas, no framework · a
+        companion to the
+        <a href="#" id="platform-link">event-driven order platform</a>.
+      </p>
+    </footer>
+
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>

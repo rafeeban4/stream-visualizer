@@ -1,0 +1,12 @@
+{
+  "projects": {
+    "default": "portfolio-cd098"
+  },
+  "targets": {
+    "portfolio-cd098": {
+      "hosting": {
+        "streamscope": ["streamscope-demo"]
+      }
+    }
+  }
+}
